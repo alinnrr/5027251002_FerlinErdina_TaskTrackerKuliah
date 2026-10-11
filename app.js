@@ -1,17 +1,18 @@
-// 02. State di array of objects
-let tasks = [];
+// 02. State di Array of Objects (Penyimpanan Utama)
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+let currentFilter = "semua";
 
 // DOM Elements
-const taskList = document.querySelector("#task-list");
-const counter = document.querySelector("#counter");
-
 const taskForm = document.querySelector("#task-form");
 const judulInput = document.querySelector("#judul-input");
 const matkulSelect = document.querySelector("#matkul-select");
 const deadlineInput = document.querySelector("#deadline-input");
 const errorMsg = document.querySelector("#error-msg");
+const taskList = document.querySelector("#task-list");
+const counter = document.querySelector("#counter");
+const filterButtons = document.querySelectorAll(".filter-btn");
 
-// 01. Form Tambah Tugas + preventDefault & Validasi
+// 01. Form Tambah Tugas dengan Validasi
 taskForm.addEventListener("submit", (e) => {
   e.preventDefault();
 
@@ -29,8 +30,9 @@ taskForm.addEventListener("submit", (e) => {
     return;
   }
 
-  errorMsg.textContent = ""; // Clear error jika valid
+  errorMsg.textContent = ""; // Bersihkan error jika valid
 
+  // Tambah State Baru
   const newTask = {
     id: Date.now(),
     judul: judul,
@@ -40,49 +42,75 @@ taskForm.addEventListener("submit", (e) => {
   };
 
   tasks.push(newTask);
-  render();
+  saveAndRender();
 
-  // Reset form
+  // Reset Input
   judulInput.value = "";
   deadlineInput.value = "";
 });
 
-// 03. Event Delegation di <ul> untuk checkbox & hapus
+// 03. Event Delegation pada <ul> (Checkbox Selesai & Hapus)
 taskList.addEventListener("click", (e) => {
   const item = e.target.closest(".task-item");
   if (!item) return;
 
   const id = Number(item.dataset.id);
 
-  // Toggle Selesai
+  // Jika Checkbox diklik
   if (e.target.classList.contains("task-checkbox")) {
     tasks = tasks.map((task) =>
       task.id === id ? { ...task, selesai: e.target.checked } : task,
     );
-    render();
+    saveAndRender();
   }
 
-  // Tombol Hapus
+  // Jika Tombol Hapus diklik
   if (e.target.classList.contains("delete-btn")) {
     tasks = tasks.filter((task) => task.id !== id);
-    render();
+    saveAndRender();
   }
 });
 
-// 02, 05, & 06. Fungsi Render Tunggal & Aman
+// 04. Filter Filter (Semua / Aktif / Selesai)
+filterButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    filterButtons.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentFilter = btn.dataset.filter;
+    render();
+  });
+});
+
+// Bonus: Simpan ke localStorage & Urutkan berdasarkan deadline terdekat
+function saveAndRender() {
+  tasks.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  render();
+}
+
+// 02 & 05 & 06. Fungsi Render Tunggal & Aman (textContent)
 function render() {
   taskList.innerHTML = "";
 
-  // 05. Counter tugas aktif
+  // Filter Data
+  const filteredTasks = tasks.filter((task) => {
+    if (currentFilter === "aktif") return !task.selesai;
+    if (currentFilter === "selesai") return task.selesai;
+    return true; // semua
+  });
+
+  // 05. Counter Tugas Aktif
   const activeCount = tasks.filter((t) => !t.selesai).length;
   counter.textContent = `${activeCount} tugas aktif`;
 
-  if (tasks.length === 0) {
-    taskList.innerHTML = `<li class="empty-msg">Tidak ada tugas.</li>`;
+  // Pesan jika daftar kosong
+  if (filteredTasks.length === 0) {
+    taskList.innerHTML = `<li class="empty-msg">Tidak ada tugas dalam daftar ini.</li>`;
     return;
   }
 
-  tasks.forEach((task) => {
+  // Render Elemen Aman (Bebas XSS)
+  filteredTasks.forEach((task) => {
     const li = document.createElement("li");
     li.className = `task-item ${task.selesai ? "done" : ""}`;
     li.dataset.id = task.id;
@@ -98,7 +126,7 @@ function render() {
     const detailsDiv = document.createElement("div");
     detailsDiv.className = "task-details";
 
-    // 06. Aman: menggunakan textContent untuk mencegah XSS
+    // 06. Aman: Pakai textContent
     const titleSpan = document.createElement("span");
     titleSpan.className = "task-title";
     titleSpan.textContent = task.judul;
@@ -119,4 +147,5 @@ function render() {
   });
 }
 
+// Jalankan Render Pertama Kali
 render();
