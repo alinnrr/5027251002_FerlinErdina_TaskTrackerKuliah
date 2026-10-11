@@ -1,5 +1,15 @@
-// 02. State di Array of Objects (Penyimpanan Utama)
-let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+// Helper API yang mengecek res.ok dan melempar error dari pesan server
+async function api(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP Error: ${res.status}`);
+  }
+  return res.json();
+}
+
+let tasks = [];
+let matkulList = [];
 let currentFilter = "semua";
 
 // DOM Elements
@@ -12,15 +22,37 @@ const taskList = document.querySelector("#task-list");
 const counter = document.querySelector("#counter");
 const filterButtons = document.querySelectorAll(".filter-btn");
 
-// 01. Form Tambah Tugas dengan Validasi
-taskForm.addEventListener("submit", (e) => {
+// 01 & 05. Muat awal data dari server secara paralel dengan Promise.all
+async function initialLoad() {
+  taskList.innerHTML = `<li class="empty-msg">Memuat data dari server...</li>`;
+  try {
+    // Memuat daftar tugas dan mata kuliah secara paralel
+    const [fetchedTasks, fetchedMatkul] = await Promise.all([
+      api("/api/tugas"),
+      api("/api/matkul"),
+    ]);
+
+    tasks = fetchedTasks;
+    matkulList = fetchedMatkul;
+
+    // Render pilihan dropdown mata kuliah
+    matkulSelect.innerHTML = matkulList
+      .map((m) => `<option value="${m}">${m}</option>`)
+      .join("");
+    render();
+  } catch (err) {
+    taskList.innerHTML = `<li class="empty-msg" style="color: #ef4444;">Gagal memuat data: ${err.message} <br><button onclick="initialLoad()" style="margin-top:8px; padding:4px 8px; cursor:pointer;">Coba Lagi</button></li>`;
+  }
+}
+
+// 02. Tambah Tugas via POST /api/tugas
+taskForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const judul = judulInput.value.trim();
   const matkul = matkulSelect.value;
   const deadline = deadlineInput.value;
 
-  // Validasi
   if (judul.length < 3) {
     errorMsg.textContent = "Judul tugas minimal 3 karakter!";
     return;
@@ -30,48 +62,70 @@ taskForm.addEventListener("submit", (e) => {
     return;
   }
 
-  errorMsg.textContent = ""; // Bersihkan error jika valid
+  errorMsg.textContent = "";
+  const submitBtn = taskForm.querySelector("button");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Mengirim...";
 
-  // Tambah State Baru
-  const newTask = {
-    id: Date.now(),
-    judul: judul,
-    matkul: matkul,
-    deadline: deadline,
-    selesai: false,
-  };
+  try {
+    const newTask = { judul, matkul, deadline, selesai: false };
+    const savedTask = await api("/api/tugas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newTask),
+    });
 
-  tasks.push(newTask);
-  saveAndRender();
+    tasks.push(savedTask);
+    render();
 
-  // Reset Input
-  judulInput.value = "";
-  deadlineInput.value = "";
+    judulInput.value = "";
+    deadlineInput.value = "";
+  } catch (err) {
+    errorMsg.textContent = err.message;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Tambah";
+  }
 });
 
-// 03. Event Delegation pada <ul> (Checkbox Selesai & Hapus)
-taskList.addEventListener("click", (e) => {
+// 03. Selesai & Hapus lewat Event Delegation (PATCH & DELETE)
+taskList.addEventListener("click", async (e) => {
   const item = e.target.closest(".task-item");
   if (!item) return;
 
-  const id = Number(item.dataset.id);
+  const id = item.dataset.id;
 
-  // Jika Checkbox diklik
+  // Toggle Selesai (PATCH /api/tugas/:id)
   if (e.target.classList.contains("task-checkbox")) {
-    tasks = tasks.map((task) =>
-      task.id === id ? { ...task, selesai: e.target.checked } : task,
-    );
-    saveAndRender();
+    const isChecked = e.target.checked;
+    try {
+      const updated = await api(`/api/tugas/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selesai: isChecked }),
+      });
+
+      tasks = tasks.map((task) => (task.id == id ? updated : task));
+      render();
+    } catch (err) {
+      alert(`Gagal memperbarui status: ${err.message}`);
+      e.target.checked = !isChecked; // Kembalikan posisi checkbox jika gagal
+    }
   }
 
-  // Jika Tombol Hapus diklik
+  // Tombol Hapus (DELETE /api/tugas/:id)
   if (e.target.classList.contains("delete-btn")) {
-    tasks = tasks.filter((task) => task.id !== id);
-    saveAndRender();
+    try {
+      await api(`/api/tugas/${id}`, { method: "DELETE" });
+      tasks = tasks.filter((task) => task.id != id);
+      render();
+    } catch (err) {
+      alert(`Gagal menghapus tugas: ${err.message}`);
+    }
   }
 });
 
-// 04. Filter Filter (Semua / Aktif / Selesai)
+// 04. Filter Tombol
 filterButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     filterButtons.forEach((b) => b.classList.remove("active"));
@@ -81,35 +135,24 @@ filterButtons.forEach((btn) => {
   });
 });
 
-// Bonus: Simpan ke localStorage & Urutkan berdasarkan deadline terdekat
-function saveAndRender() {
-  tasks.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-  render();
-}
-
-// 02 & 05 & 06. Fungsi Render Tunggal & Aman (textContent)
+// Fungsi Render Utama
 function render() {
   taskList.innerHTML = "";
 
-  // Filter Data
   const filteredTasks = tasks.filter((task) => {
     if (currentFilter === "aktif") return !task.selesai;
     if (currentFilter === "selesai") return task.selesai;
-    return true; // semua
+    return true;
   });
 
-  // 05. Counter Tugas Aktif
   const activeCount = tasks.filter((t) => !t.selesai).length;
   counter.textContent = `${activeCount} tugas aktif`;
 
-  // Pesan jika daftar kosong
   if (filteredTasks.length === 0) {
     taskList.innerHTML = `<li class="empty-msg">Tidak ada tugas dalam daftar ini.</li>`;
     return;
   }
 
-  // Render Elemen Aman (Bebas XSS)
   filteredTasks.forEach((task) => {
     const li = document.createElement("li");
     li.className = `task-item ${task.selesai ? "done" : ""}`;
@@ -126,10 +169,9 @@ function render() {
     const detailsDiv = document.createElement("div");
     detailsDiv.className = "task-details";
 
-    // 06. Aman: Pakai textContent
     const titleSpan = document.createElement("span");
     titleSpan.className = "task-title";
-    titleSpan.textContent = task.judul;
+    titleSpan.textContent = task.judul; // Aman dari XSS
 
     const metaSpan = document.createElement("span");
     metaSpan.className = "task-meta";
@@ -147,5 +189,5 @@ function render() {
   });
 }
 
-// Jalankan Render Pertama Kali
-render();
+// Mulai aplikasi dengan memuat data dari server
+initialLoad();
