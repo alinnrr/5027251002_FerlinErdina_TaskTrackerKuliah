@@ -47,6 +47,28 @@ taskForm.addEventListener("submit", (e) => {
   deadlineInput.value = "";
 });
 
+// 03. Event Delegation di <ul> untuk checkbox & hapus
+taskList.addEventListener("click", (e) => {
+  const item = e.target.closest(".task-item");
+  if (!item) return;
+
+  const id = Number(item.dataset.id);
+
+  // Toggle Selesai
+  if (e.target.classList.contains("task-checkbox")) {
+    tasks = tasks.map((task) =>
+      task.id === id ? { ...task, selesai: e.target.checked } : task,
+    );
+    render();
+  }
+
+  // Tombol Hapus
+  if (e.target.classList.contains("delete-btn")) {
+    tasks = tasks.filter((task) => task.id !== id);
+    render();
+  }
+});
+
 // 02, 05, & 06. Fungsi Render Tunggal & Aman
 function render() {
   taskList.innerHTML = "";
