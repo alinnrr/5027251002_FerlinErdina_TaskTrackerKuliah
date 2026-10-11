@@ -5,6 +5,48 @@ let tasks = [];
 const taskList = document.querySelector("#task-list");
 const counter = document.querySelector("#counter");
 
+const taskForm = document.querySelector("#task-form");
+const judulInput = document.querySelector("#judul-input");
+const matkulSelect = document.querySelector("#matkul-select");
+const deadlineInput = document.querySelector("#deadline-input");
+const errorMsg = document.querySelector("#error-msg");
+
+// 01. Form Tambah Tugas + preventDefault & Validasi
+taskForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const judul = judulInput.value.trim();
+  const matkul = matkulSelect.value;
+  const deadline = deadlineInput.value;
+
+  // Validasi
+  if (judul.length < 3) {
+    errorMsg.textContent = "Judul tugas minimal 3 karakter!";
+    return;
+  }
+  if (!deadline) {
+    errorMsg.textContent = "Deadline wajib diisi!";
+    return;
+  }
+
+  errorMsg.textContent = ""; // Clear error jika valid
+
+  const newTask = {
+    id: Date.now(),
+    judul: judul,
+    matkul: matkul,
+    deadline: deadline,
+    selesai: false,
+  };
+
+  tasks.push(newTask);
+  render();
+
+  // Reset form
+  judulInput.value = "";
+  deadlineInput.value = "";
+});
+
 // 02, 05, & 06. Fungsi Render Tunggal & Aman
 function render() {
   taskList.innerHTML = "";
